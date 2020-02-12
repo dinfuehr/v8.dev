@@ -30,12 +30,23 @@ There are several cases where the next token cannot be identified purely by look
 
 For example:
 ```javascript
-const x = 10 / 5; // It's a division!
+const x = 10 / 5; // Here / is DivPunctuator
 
-const r = /foo/; // It's a RegExp!
+const r = /foo/; // Here / is the start of a RegularExpressionLiteral
 ```
 
-FIXME: similar examples for template literals bitte!
+A similar thing happens with templates. For example:
+
+```javascript
+const what1 = 'temp';
+const what2 = 'late';
+const t = `I am a ${ what1 + what2 }`; // Here }` is a TemplateTail
+
+if (0 == 1) {
+}`not very useful`;
+// Here } is RightBracePunctuator and ` the start of a NoSubstitutionTemplate
+
+```
 
 The lexical grammar uses several goal symbols to distinguish between the contexts where some input elements are permitted and some are not. For example, the goal symbol `InputElementDiv` is used in contexts where `/` is a division and `/=` is a division-assignment:
 
@@ -47,7 +58,7 @@ The lexical grammar uses several goal symbols to distinguish between the context
 > `DivPunctuator`
 > `RightBracePunktuator`
 
-so in this context, encountering `/` will produce the `DivPunctuator` input element. Producing a `RegularExpressionLiteral` is not an option here.
+In this context, encountering `/` will produce the `DivPunctuator` input element. Producing a `RegularExpressionLiteral` is not an option here.
 
 On the other hand, `InputElementRegExp` is a goal symbol for the contexts where `/` is the beginning of a RegExp:
 
@@ -59,29 +70,33 @@ On the other hand, `InputElementRegExp` is a goal symbol for the contexts where 
 > `RightBracePunktuator`
 > `RegularExpressionLiteral`
 
-As we see from the productions, it's possible that this produces the `RegularExpressionLiteral` input element.
-
-We can imagine the syntactic grammar analyzer ("parser") calling the lexical grammar analyzer ("tokenizer" or "lexer"), passing the goal symbol as a parameter and asking for the next input element suitable for that goal symbol.
+As we see from the productions, it's possible that this produces the `RegularExpressionLiteral` input element, but producing `DivPunctuator` is not possible.
 
 Similarly, there is another goal symbol, `InputElementRegExpOrTemplateTail`, for contexts where `TemplateMiddle` and `TemplateTail` are permitted, in addition to `RegularExpressionLiteral`. And finally, `InputElementTemplateTail` is the goal symbol for contexts where only `TemplateMiddle` and `TemplateTail` are permitted but `RegularExpressionLiteral` is not permitted.
+
+We can imagine the syntactic grammar analyzer ("parser") calling the lexical grammar analyzer ("tokenizer" or "lexer"), passing the goal symbol as a parameter and asking for the next input element suitable for that goal symbol.
 
 The [RegExp grammar](https://tc39.es/ecma262/#sec-patterns) describes how Unicode code points are translated into regular expressions.
 
 We can imagine the parser asking the tokenizer for the next token in a context where RegExps are allowed. If the tokenizer returns `RegularExpressionLiteral`, we branch into the RegExp grammar for converting the string of the `RegularExpressionLiteral` into a RegExp pattern.
 
-The [numeric string grammar](https://tc39.es/ecma262/#sec-tonumber-applied-to-the-string-type) describes how Strings are translated into numeric values. 
+The [numeric string grammar](https://tc39.es/ecma262/#sec-tonumber-applied-to-the-string-type) describes how Strings are translated into numeric values.
 
 The [syntactic grammar](https://tc39.es/ecma262/#sec-syntactic-grammar) describes how syntactically correct programs are composed of tokens.
 
-The notation used for different grammars differs slightly. For example, the syntactic grammar uses `goal :` whereas the lexical grammar use and the RegExp grammar use `goal ::` and the numeric string grammar uses `goal :::`.
+The notation used for different grammars differs slightly. For example, the syntactic grammar uses `Goal :` whereas the lexical grammar use and the RegExp grammar use `Goal ::` and the numeric string grammar uses `Goal :::`.
 
 For the rest of this episode, we'll focus on the syntactic grammar.
 
 ## Example: Allowing legacy identifiers
 
-JavaScript sometimes allows `await` and `yield` as identifiers. Finding out when exactly they are allowed can be a bit involved, so let's dive right in!
+In some contexts, `await` and `yield` are allowed identifiers. Finding out when exactly they are allowed can be a bit involved, so let's dive right in!
 
-The reason for allowing `await` as an identifier is that the standard committee wanted to keep JavaScript backwards compatible when introducing async functions. It's possible that some web page has a (normal) function which uses `await` as an identifier, and such a function should continue to work:
+The reason for allowing these keywords as identifiers is that the standard committee wanted to keep JavaScript backwards compatible when introducing async functions and generators. It's possible that some web page has a (normal) function which uses `await` or `yield` as an identifier, and such a function should continue to work.
+
+Let's have a closer look at allowing `await` as an identifier (`yield` works similarly).
+
+For example, this code works:
 
 ```javascript
 function old() {
@@ -94,10 +109,13 @@ However, if we're inside an async function, `await` is treated as a keyword. Thi
 
 At the first glance, the grammar rules can look a bit scary:
 
-> `VariableStatement[Yield, Await]` :
+> <code>VariableStatement<sub>[Yield, Await]</sub> :</code>
 > `var VariableDeclarationList[+In, ?Yield, ?Await];`
 
+Huh? What are the weird subscripts? We have not only `[Yield, Await]` but also `+` in `+In` and the `?` in `?Await`. What does all that mean?
 
-These shorthands are explained in section [Grammar Notation)(https://tc39.es/ecma262/#sec-grammar-notation).
+These shorthands are explained in section [Grammar Notation](https://tc39.es/ecma262/#sec-grammar-notation).
+
+
 
 
