@@ -35,16 +35,19 @@ const x = 10 / 5; // Here / is DivPunctuator
 const r = /foo/; // Here / is the start of a RegularExpressionLiteral
 ```
 
-A similar thing happens with templates. For example:
+A similar thing happens with templates &mdash; the interpretation of <code>{`</code> depends on the context we're in:
 
 ```javascript
 const what1 = 'temp';
 const what2 = 'late';
-const t = `I am a ${ what1 + what2 }`; // Here }` is a TemplateTail
+const t = `I am a ${ what1 + what2 }`;
+// `I am a ${ is TemplateHead
+// }` is TemplateTail
 
 if (0 == 1) {
 }`not very useful`;
-// Here } is RightBracePunctuator and ` the start of a NoSubstitutionTemplate
+// } is RightBracePunctuator
+// ` is the start of a NoSubstitutionTemplate
 
 ```
 
@@ -84,15 +87,13 @@ The [numeric string grammar](https://tc39.es/ecma262/#sec-tonumber-applied-to-th
 
 The [syntactic grammar](https://tc39.es/ecma262/#sec-syntactic-grammar) describes how syntactically correct programs are composed of tokens.
 
-The notation used for different grammars differs slightly. For example, the syntactic grammar uses `Goal :` whereas the lexical grammar use and the RegExp grammar use `Goal ::` and the numeric string grammar uses `Goal :::`.
+The notation used for different grammars differs slightly. For example, the syntactic grammar uses `Symbol :` whereas the lexical grammar use and the RegExp grammar use `Symbol ::` and the numeric string grammar uses `Symbol :::`.
 
 For the rest of this episode, we'll focus on the syntactic grammar.
 
 ## Example: Allowing legacy identifiers
 
 In some contexts, `await` and `yield` are allowed identifiers. Finding out when exactly they are allowed can be a bit involved, so let's dive right in!
-
-The reason for allowing these keywords as identifiers is that the standard committee wanted to keep JavaScript backwards compatible when introducing async functions and generators. It's possible that some web page has a (normal) function which uses `await` or `yield` as an identifier, and such a function should continue to work.
 
 Let's have a closer look at allowing `await` as an identifier (`yield` works similarly).
 
@@ -105,17 +106,88 @@ function old() {
 }
 ```
 
+but this doesn't:
+
+```javascript
+async function modern() {
+  var await = 900; // Syntax error
+}
+```
+
 However, if we're inside an async function, `await` is treated as a keyword. This is not a breaking change: if a developer writes an async function, they are already using a newer version of the language and there's no reason to allow `await` as an identifier.
 
 At the first glance, the grammar rules can look a bit scary:
 
 > <code>VariableStatement<sub>[Yield, Await]</sub> :</code>
-> `var VariableDeclarationList[+In, ?Yield, ?Await];`
+> <code>var VariableDeclarationList<sub>[+In, ?Yield, ?Await]</sub>;</code>
 
 Huh? What are the weird subscripts? We have not only `[Yield, Await]` but also `+` in `+In` and the `?` in `?Await`. What does all that mean?
 
-These shorthands are explained in section [Grammar Notation](https://tc39.es/ecma262/#sec-grammar-notation).
+The notation is explained in section [Grammar Notation](https://tc39.es/ecma262/#sec-grammar-notation).
 
+The subscripts are a shorthand for expressing a set of productions, for a set of left-hand side symbols, all at once. The left-hand side symbol has two parameters, so the "real" left-hand side symbols we're defining are `VariableStatement`, `VariableStatement_Yield`, `VariableStatement_Await` and `VariableStatement_Yield_Await`.
 
+On the right hand side of the production, we see the shorthand `+In`, meaning "use the version with `_In`", and `+Await`, meaning "use the version with `_Await` iff the left-hand side symbol has `_Await` (similarly with `?Yield`).
 
+(The third shorthand, `~Foo`, meaning "use the version without `_Foo`", is not used in this production.)
 
+With this information, we can expand the productions like this:
+
+> `VariableStatement` :
+> `var VariableDeclarationList_In;`
+>
+> `VariableStatement_Yield` :
+> `var VariableDeclarationList_In_Yield;`
+>
+> `VariableStatement_Await` :
+> `var VariableDeclarationList_In_Await;`
+>
+> `VariableStatement_Yield_Await` :
+> `var VariableDeclarationList_In_Yield_Await;`
+
+We can follow the productions further and keep track of the parameters. For example, all productions for `VariableDeclarationList` just carry them on as is, which is not very interesting:
+
+> <code>VariableDeclarationList<sub>[In, Yield, Await]</sub> :</code>
+> <code>VariableDeclaration<sub>[?In, ?Yield, ?Await]</sub></code>
+> <code>VariableDeclarationList<sub>[?In, ?Yield, ?Await]</sub> , VariableDeclaration<sub>[?In, ?Yield, ?Await]</sub></code>
+
+Ultimately, we'll need to know two things: 1) Where is it decided whether we're in the case with `_Await` or without `_Await`? 2) Where does it make a difference &mdash; where do the productions for `Something_Await` and `Something` (without `_Await`) diverge?
+
+Let's tackle question 1 first. It's somewhat easy to guess it makes a difference in async functions. Reading the rules for async function declarations, we find this:
+
+> `AsyncFunctionBody :`
+> <code>FunctionBody<sub>[~Yield, +Await]</sub></code>
+
+Note that `AsyncFunctionBody` has no parameters, but they're introduced here.
+
+If we expand this production, we get:
+
+> `AsyncFunctionBody :`
+> `FunctionBody_Await`
+
+On the other hand, if we're inside a normal, non-async function, the relevant production is:
+
+> <code>FunctionDeclaration<sub>[Yield, Await, Default]</sub> :</code>
+> <code>function BindingIdentifier<sub>[?Yield, ?Await]</sub> ( FormalParameters<sub>[~Yield, ~Await]</sub> ) { FunctionBody<sub>[~Yield, ~Await]</sub> }</code>
+
+(`FunctionDeclaration` has another production, but it's not relevant for our code example.)
+
+To avoid combinatorial expansion, let's ignore the `Default` parameter which is not relevant for this particular production.
+
+The expanded form of the production is:
+
+> `FunctionDeclaration :`
+> `function BindingIdentifier ( FormalParameters ) { FunctionBody }`
+
+> `FunctionDeclaration_Yield :`
+> `function BindingIdentifier_Yield ( FormalParameters_Yield ) { FunctionBody }`
+
+> `FunctionDeclaration_Await :`
+> `function BindingIdentifier_Await ( FormalParameters_Await ) { FunctionBody }`
+
+> `FunctionDeclaration_Yield_Await :`
+> `function BindingIdentifier_Yield_Await ( FormalParameters_Yield_Await ) { FunctionBody }`
+
+The important thing in this production is that `FunctionBody` is parameterized with `[~Yield, ~Await]`, meaning that we always take the version without `_Yield` and without `_Await`, no matter what the parameters of `FunctionDeclaration` were.
+
+We can follow the productions further to see that they get carried unchanged from `AsyncFunctionBody` and `FunctionBody` all the way to the `VariableStatement` production we were previously looking at.
