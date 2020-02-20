@@ -29,11 +29,10 @@ We know that properties are looked up in the prototype chain: if an object doesn
 For example:
 
 ```javascript
-const o1 = {'foo' : 2511};
+const o1 = {'foo' : 99};
 const o2 = {};
-console.log(o2.foo); // undefined
 Object.setPrototypeOf(o2, o1);
-console.log(o2.foo); // 2511
+o2.foo; // 99
 ```
 
 ## Where's the prototype walk defined?
@@ -78,11 +77,15 @@ We'll see shortly that `Receiver` is the value which is used as the **this value
 
 The prototype chain walk is inside step 3: if we don't find the property as an own property, we recurse into the prototype's `[[Get]]` method.
 
+Let's look at how this algorithm works when we access `o2.foo`. First we invoke `OrdinaryGet` with `O` being `o2` and `P` being `"foo"`. `O.[[GetOwnProperty]]` returns `undefined`, since `o2` doesn't have an own property called `"foo"`, so we take the if branch in step 3. In step 3.a, we set `parent` to the prototype of `o2` which is `o1`. `parent` is not `null`, so we don't return in step 3.b. In step 3.c, we call the parent's `[[Get]]` method with property key `"foo"`, and return whatever it returns.
+
+The parent (`o1`) is an ordinary object, so its `[[Get]]` method invokes `OrdinaryGet` again, this time with `O` being `o1` and `P` being `"foo"`. In step 2, `O.[[GetOwnProperty]]("foo")` returns the property descriptor associated to `"foo"`. The property descriptor is not `undefined`, so we don't take the if branch in step 3. Next we execute step 4. The property descriptor is a data descriptor, so we return its value, `99`, in step 4, and we're done.
+
 ## What's `Receiver` and where is it coming from?
 
 The `Receiver` parameter is only used in the case of accessor properties in step 8. It's passed as the **this value** when calling the getter function of an accessor property.
 
-`OrdinaryGet` passes the original `Receiver` throughout the recursion, unchanged (step 3 c). Let's find out where the `Receiver` is originally coming from!
+`OrdinaryGet` passes the original `Receiver` throughout the recursion, unchanged (step 3.c). Let's find out where the `Receiver` is originally coming from!
 
 Searching for places where `[[Get]]` is called we find an abstract operation `GetValue` which operates on References. Reference is a specification type, consisting of a base value, the reference name and a strict reference flag. In the case of `o2.foo`, the base value is the Object `o2`, the reference name is the String `"foo"` and the strict reference flag is `false`, since the example code is sloppy.
 
@@ -110,7 +113,7 @@ Let's look at how `GetValue` is defined:
 >     1. Assert: `base` is an Environment Record.
 >     1. Return `? base.GetBindingValue(GetReferencedName(V), IsStrictReference(V))`
 
-The reference in our example is `o2.foo` which is a property reference. So we take branch 5. We don't take the branch in 5 a, since the base (`o2`) is not a primitive value (a Boolean, String, Symbol, BigInt or Number).
+The reference in our example is `o2.foo` which is a property reference. So we take branch 5. We don't take the branch in 5.a, since the base (`o2`) is not a primitive value (a Boolean, String, Symbol, BigInt or Number).
 
 Then we call `[[Get]]` in step 5.b. The `Receiver` we pass is `GetThisValue(V)`. In this case, it's just the base value of the Reference:
 
@@ -251,7 +254,7 @@ In this case, the behavior is defined in the runtime semantics for the `Assignme
 > 1. Perform `? DestructuringAssignmentEvaluation` of `assignmentPattern` using `rval` as the argument.
 > 1. Return `rval`.
 
-Now the `LeftHandSideExpression` (`x`) is not an object literal or an array literal, so we take the if branch in step 1. In step 1 a, we evaluate the left-hand side (`x`) and store the result into `lref`. `o2.foo` is not a function definition, so we don't take the if branch in 1 c, but the else branch in 1 d. There we evaluate `o2.foo` and call `GetValue` on it.
+Now the `LeftHandSideExpression` (`x`) is not an object literal or an array literal, so we take the if branch in step 1. In step 1.a, we evaluate the left-hand side (`x`) and store the result into `lref`. `o2.foo` is not a function definition, so we don't take the if branch in 1.c, but the else branch in 1.d. There we evaluate `o2.foo` and call `GetValue` on it.
 
 In any case, `GetValue` will be called on the Reference which is the result of evaluating `o2.foo`. Thus, we know that the Object internal method `[[Get]]` will get invoked when accessing a property on an Object, and the prototype chain walk will occur.
 
